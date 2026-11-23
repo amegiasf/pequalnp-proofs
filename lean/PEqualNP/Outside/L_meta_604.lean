@@ -53,8 +53,7 @@ theorem fold_lt (gs : List Gate) :
     exact step_lt w g i hi
 
 theorem wires_step (gs : List Gate) (w : List Bool) :
-    wiresFrom gs w = gs.foldl step w := by
-  simp [wiresFrom, step]
+    wiresFrom gs w = gs.foldl step w := rfl
 
 def xorTail (a o m : ℕ) : List Gate :=
   [⟨GateOp.and, [a, o]⟩, ⟨GateOp.or, [a, o]⟩, ⟨GateOp.not, [m]⟩, ⟨GateOp.and, [m + 1, m + 2]⟩]
@@ -89,11 +88,13 @@ theorem xorTail_eval (w : List Bool) (a o : ℕ) (ha : a < w.length) (ho : o < w
     rw [step_last _ _ _ l1.symm]
     have ha' : w1.getD a false = w.getD a false := step_lt _ _ _ ha
     have ho' : w1.getD o false = w.getD o false := step_lt _ _ _ ho
+    simp only [List.getD_eq_getElem?_getD] at ha' ho'
     simp [GateOp.eval, ha', ho']
   have e3 : w3.getD (w.length + 2) false = !(w.getD a false && w.getD o false) := by
     rw [step_last _ _ _ l2.symm]
     have h0 : w2.getD w.length false = (w.getD a false && w.getD o false) := by
       rw [step_lt _ _ _ (by omega), e1]
+    simp only [List.getD_eq_getElem?_getD] at h0
     simp [GateOp.eval, h0]
   have e4 : w4.getD (w.length + 3) false =
       ((w.getD a false || w.getD o false) && !(w.getD a false && w.getD o false)) := by
@@ -101,6 +102,7 @@ theorem xorTail_eval (w : List Bool) (a o : ℕ) (ha : a < w.length) (ho : o < w
     have hOr : w3.getD (w.length + 1) false = (w.getD a false || w.getD o false) := by
       rw [step_lt _ _ _ (by omega), e2]
     have hNot : w3.getD (w.length + 2) false = !(w.getD a false && w.getD o false) := e3
+    simp only [List.getD_eq_getElem?_getD] at hOr hNot
     simp [GateOp.eval, hOr, hNot]
   have hfold : (xorTail a o w.length).foldl step w = w4 := by
     simp [xorTail, w1, w2, w3, w4, step]
@@ -121,10 +123,14 @@ theorem xnorTail_eval (w : List Bool) (a o : ℕ) (ha : a < w.length) (ho : o < 
     simp [GateOp.eval]
   have e2 : w2.getD (w.length + 1) false = (w.getD a false || w.getD o false) := by
     rw [step_last _ _ _ l1.symm]
-    simp [GateOp.eval, step_lt _ _ _ ha, step_lt _ _ _ ho]
+    have ha' : w1.getD a false = w.getD a false := step_lt _ _ _ ha
+    have ho' : w1.getD o false = w.getD o false := step_lt _ _ _ ho
+    simp only [List.getD_eq_getElem?_getD] at ha' ho'
+    simp [GateOp.eval, ha', ho']
   have e3 : w3.getD (w.length + 2) false = !(w.getD a false || w.getD o false) := by
     rw [step_last _ _ _ l2.symm]
     have h0 : w2.getD (w.length + 1) false = (w.getD a false || w.getD o false) := e2
+    simp only [List.getD_eq_getElem?_getD] at h0
     simp [GateOp.eval, h0]
   have e4 : w4.getD (w.length + 3) false =
       ((w.getD a false && w.getD o false) || !(w.getD a false || w.getD o false)) := by
@@ -132,6 +138,7 @@ theorem xnorTail_eval (w : List Bool) (a o : ℕ) (ha : a < w.length) (ho : o < 
     have hAnd : w3.getD w.length false = (w.getD a false && w.getD o false) := by
       rw [step_lt _ _ _ (by omega), step_lt _ _ _ (by omega), e1]
     have hNot : w3.getD (w.length + 2) false = !(w.getD a false || w.getD o false) := e3
+    simp only [List.getD_eq_getElem?_getD] at hAnd hNot
     simp [GateOp.eval, hAnd, hNot]
   have hfold : (xnorTail a o w.length).foldl step w = w4 := by
     simp [xnorTail, w1, w2, w3, w4, step]
@@ -145,7 +152,8 @@ theorem output_lt {n : ℕ} (g : (Fin n → Bool) → Bool) (C : Circuit)
   apply hne
   have hfalse : ∀ x : Fin n → Bool, C.eval (List.ofFn x) = false := by
     intro x
-    rw [wires_eq]
+    have he : C.eval (List.ofFn x) = (wiresFrom C.gates (List.ofFn x)).getD C.output false := rfl
+    rw [he]
     exact List.getD_eq_default _ _ (by rw [length_wiresFrom]; simp; omega)
   rw [← hev y, ← hev y', hfalse, hfalse]
 
@@ -172,9 +180,7 @@ theorem upperOf (n : ℕ) (g : (Fin n → Bool) → Bool) (s : ℕ)
     simp only [List.length_append, tail, xorTail, List.length_cons, List.length_nil]
     omega
   · intro x
-    rw [show ((C.gates ++ tail).foldl (fun w g => w ++ [g.op.eval (g.inputs.map fun i => w.getD i false)])
-        (List.ofFn x)).getD (m + 3) false = ((C.gates ++ tail).foldl step (List.ofFn x)).getD (m + 3) false
-      by rfl]
+    show ((C.gates ++ tail).foldl step (List.ofFn x)).getD (m + 3) false = H n g x
     rw [List.foldl_append]
     let w := C.gates.foldl step (List.ofFn x)
     have hlen : w.length = m := by
@@ -187,9 +193,8 @@ theorem upperOf (n : ℕ) (g : (Fin n → Bool) → Bool) (s : ℕ)
       rw [List.getD_eq_getElem _ _ (by simp)]
       simp
     have hbase : w.getD C.output false = g (fun i : Fin n => x i.castSucc) := by
-      have : C.eval (List.ofFn x) = g (fun i => x i.castSucc) := hev x
-      rw [← this, wires_eq, wires_step]
-      rfl
+      have hc : C.eval (List.ofFn x) = g (fun i => x i.castSucc) := hev x
+      rw [show w.getD C.output false = C.eval (List.ofFn x) from rfl, hc]
     have htail := xorTail_eval w n C.output ha ho'
     have heq : (tail.foldl step w).getD (w.length + 3) false =
         xor (w.getD n false) (w.getD C.output false) := by
@@ -221,6 +226,7 @@ theorem upperNot (n : ℕ) (g : (Fin n → Bool) → Bool) (s : ℕ)
     simp only [List.length_append, tail, xnorTail, List.length_cons, List.length_nil]
     omega
   · intro x
+    show ((C.gates ++ tail).foldl step (List.ofFn x)).getD (m + 3) false = H n g x
     rw [List.foldl_append]
     let w := C.gates.foldl step (List.ofFn x)
     change (tail.foldl step w).getD (m + 3) false = H n g x
@@ -234,8 +240,8 @@ theorem upperNot (n : ℕ) (g : (Fin n → Bool) → Bool) (s : ℕ)
       rw [List.getD_eq_getElem _ _ (by simp)]
       simp
     have hbase : w.getD C.output false = !(g (fun i : Fin n => x i.castSucc)) := by
-      have : C.eval (List.ofFn x) = !(g (fun i => x i.castSucc)) := hev x
-      rw [← this, wires_eq, wires_step]
+      have hc : C.eval (List.ofFn x) = !(g (fun i => x i.castSucc)) := hev x
+      rw [show w.getD C.output false = C.eval (List.ofFn x) from rfl, hc]
     have htail := xnorTail_eval w n C.output ha ho'
     have heq : (tail.foldl step w).getD (w.length + 3) false =
         xor (w.getD n false) (!(w.getD C.output false)) := by
